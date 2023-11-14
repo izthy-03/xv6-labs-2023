@@ -41,7 +41,7 @@ ls(char *path)
     close(fd);
     return;
   }
-
+  
   switch(st.type){
   case T_DEVICE:
   case T_FILE:
