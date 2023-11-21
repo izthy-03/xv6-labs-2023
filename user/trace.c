@@ -3,6 +3,8 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
+extern int trace(int);
+
 int
 main(int argc, char *argv[])
 {

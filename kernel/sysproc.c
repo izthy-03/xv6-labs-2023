@@ -91,3 +91,22 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 
+sys_trace(void)
+{
+  int mask;
+
+  argint(0, &mask);
+  trace(mask);
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 sinfo; // user pointer to struct sysinfo
+
+  argaddr(0, &sinfo);
+  return sysinfo(sinfo);
+}

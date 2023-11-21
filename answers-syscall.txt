@@ -1,0 +1,21 @@
+1. Looking at the backtrace output, which function called syscall?
+- usertrap() at kernel/trap.c
+
+2. What is the value of p->trapframe->a7 and what does that value represent? 
+- 7, represents SYS_exec
+
+3. What was the previous mode that the CPU was in?
+- $sstatus = 0x22, where SPP bit indicate the previous privilage level before the trap.
+- Here SPP = 0, so the trap is originated from user mode
+
+4. Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
+- 0x80002050 <syscall+20> lw    a3,0(zero)  #0x0
+- a3 corresponds to num
+
+5. Why does the kernel crash? Is address 0 mapped in the kernel address space? Is that confirmed by the value in scause above? 
+- Because instruction lw a3, 0(zero) attempted to load a word from address 0x0.
+- But in kernel address space, 0x0 is not mapped into any physical pages.
+- So it ran into a page fault. scause=0x000000000000000d, interrupt=0, exception code=13, description="Load page fault"
+
+6. What is the name of the binary that was running when the kernel paniced? What is its process id (pid)?
+- initcode, pid = 1.

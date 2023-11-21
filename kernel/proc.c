@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sysinfo.h"
 
 struct cpu cpus[NCPU];
 
@@ -321,6 +322,9 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  // copy tracemask to child
+  np->tracemask = p->tracemask;
 
   return pid;
 }
@@ -685,4 +689,44 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Set a process's tracemask to mask
+int
+trace(int mask)
+{
+  struct proc *p = myproc();
+  acquire(&p->lock);
+  p->tracemask = mask;
+  // printf("%d: tracemask set to %d\n", myproc()->pid, mask);
+  release(&p->lock);
+  return 0;
+}
+
+// Return the number of processes
+uint64
+procnum(void)
+{
+  struct proc *p;
+  int procnum = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    procnum += (p->state != UNUSED);
+  }
+  
+  return procnum;
+}
+
+int 
+sysinfo(uint64 addr)
+{
+  struct proc *p = myproc();
+  struct sysinfo info;
+
+  info.freemem = freemem();
+  info.nproc = procnum();
+
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
 }
