@@ -449,3 +449,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void
+pgtbldfs(pagetable_t pagetable, int level)
+{
+  if(level >= 3) 
+    return;
+  
+  for(int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    // If valid
+    if(pte & PTE_V) {
+      for(int k = 0; k < level; k++)
+        printf(".. ");
+      printf("..%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+      uint64 child = PTE2PA(pte);
+      pgtbldfs((pagetable_t)child, level + 1);
+    }
+  }
+}
+
+// Print 3-level page tables for the given pagetable
+void 
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  pgtbldfs(pagetable, 0);
+}

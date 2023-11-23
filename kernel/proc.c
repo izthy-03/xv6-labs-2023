@@ -146,6 +146,16 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Store pid in usyscall page
+  struct usyscall usys;
+  usys.pid = p->pid;
+  if(copyout(p->pagetable, USYSCALL, 
+             (char *)&usys, sizeof(struct usyscall)) < 0){
+    printf("shit: copyout failed\n");
+  }
+  // Clear PTE_W
+  pte_t *pte = walk(p->pagetable, USYSCALL, 0);
+  *pte ^= PTE_W;
   return p;
 }
 
@@ -202,6 +212,17 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  // map the usyscall page just below the trapframe page
+  // to speed up system calls
+  // READ-ONLY. Set PTE_W temporarily for kernel to copyout
+  if(mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)kalloc(), PTE_R | PTE_U | PTE_W) < 0){
+    printf("shit: mapping usyscall failed\n");
+    uvmunmap(pagetable, USYSCALL, 1, 1);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+  // printf("mapping usyscall succeeded\n");
   return pagetable;
 }
 
@@ -212,6 +233,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 

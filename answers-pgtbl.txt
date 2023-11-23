@@ -1,0 +1,12 @@
+1. Which other xv6 system call(s) could be made faster using this shared page? Explain how.
+- 汗流浃背了
+
+2. For every leaf page in the vmprint output, explain what it logically contains and what its permission bits are. 
+- ..0..0..0: pte 0x0000000021fd9c1b: .text section, permission bits = R-X
+- ..0..0..1: pte 0x0000000021fd9017: .data section, permission bits = RW-
+- ..0..0..2: pte 0x0000000021fd8c07: stack,         permission bits = RW-
+- ..0..0..3: pte 0x0000000021fd8817: heap,          permission bits = RW-
+
+- ..255..511..509: pte 0x0000000021fda401: usyscall page, permission bits = RW-
+- ..255..511..510: pte 0x0000000021fdd007: trapframe,     permission bits = RW-
+- ..255..511..511: pte 0x0000000020001c0b: trampoline,    permission bits = R-X
