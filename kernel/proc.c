@@ -132,6 +132,13 @@ found:
     return 0;
   }
 
+  // Allocate a usyscall page
+  if((p->usyscall = (struct usyscall *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -168,6 +175,11 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  if(p->usyscall)
+    kfree((void *)p->usyscall);
+  p->usyscall = 0;
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -216,9 +228,9 @@ proc_pagetable(struct proc *p)
   // to speed up system calls
   // READ-ONLY. Set PTE_W temporarily for kernel to copyout
   if(mappages(pagetable, USYSCALL, PGSIZE,
-              (uint64)kalloc(), PTE_R | PTE_U | PTE_W) < 0){
+              (uint64)(p->usyscall), PTE_R | PTE_U | PTE_W) < 0){
     printf("shit: mapping usyscall failed\n");
-    uvmunmap(pagetable, USYSCALL, 1, 1);
+    uvmunmap(pagetable, USYSCALL, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
   }
@@ -707,4 +719,35 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Return n-pages access status starting from base
+// and store it in mask
+// return -1 if failed
+int 
+pgaccess(void *base, int npage, void *mask)
+{
+  if(npage > 32)
+    return -1;
+  
+  base = (void *)PGROUNDDOWN((uint64)base);
+  
+  struct proc *p = myproc();
+  int accessbits = 0;
+
+  for(int i = 0; i < npage; i++){
+    uint64 va = (uint64)base + i * PGSIZE;
+    pte_t *pte;
+    if((pte = walk(p->pagetable, va, 0)) == 0){
+      return -1;
+    }
+    if(*pte & PTE_A){
+      accessbits |= (1 << i);
+      *pte ^= PTE_A;
+    }
+  }
+
+  copyout(p->pagetable, (uint64)mask, (char *)&accessbits, sizeof(int));
+
+  return 0;
 }

@@ -1,5 +1,10 @@
 1. Which other xv6 system call(s) could be made faster using this shared page? Explain how.
-- 汗流浃背了
+- Commonly READ-only data can be stored in this shared page
+  sys_exec: when loading a new program, if it shared the same data with the old one, then the data
+            can be shared here.
+  sys_fstat: for some read-only files, their metadata can be stored here
+  sys_open: when opening read-only files, they can be buffered here
+  sys_read: the same as sys_open 
 
 2. For every leaf page in the vmprint output, explain what it logically contains and what its permission bits are. 
 - ..0..0..0: pte 0x0000000021fd9c1b: .text section, permission bits = R-X
