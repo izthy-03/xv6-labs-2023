@@ -146,6 +146,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // initialize sigalarm about
+  memset(&p->alarm, 0 ,sizeof(p->alarm));
+  p->alarm.trapframebak = (struct trapframe*)(p->trapframe + 512);
   return p;
 }
 
@@ -685,4 +688,27 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+int
+sigalarm(int ticks, void (*handler)())
+{
+  struct proc *p = myproc();
+
+  p->alarm.ticks = ticks;
+  p->alarm.handler = handler;
+  p->alarm.ticksfromlast = 0;
+  return 0;
+}
+
+int 
+sigreturn(void)
+{
+  struct proc *p = myproc();
+
+  p->alarm.ticksfromlast = 0;
+  // Restore the previous trapframe
+  memmove(p->trapframe, p->alarm.trapframebak, sizeof(struct trapframe));
+  return 0;
 }

@@ -188,7 +188,7 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-
+	$U/_alarmtest\
 
 
 
@@ -366,3 +366,6 @@ zipball: clean submit-check
 	git archive --verbose --format zip --output lab.zip HEAD
 
 .PHONY: zipball clean grade submit-check
+
+gdb:
+	riscv64-unknown-linux-gnu-gdb kernel/kernel

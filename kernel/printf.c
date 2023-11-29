@@ -123,6 +123,7 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+  backtrace();
   for(;;)
     ;
 }
@@ -132,4 +133,29 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+extern pagetable_t kernel_pagetable;
+
+void
+backtrace(void)
+{
+  uint64 fp = r_fp();
+  uint64 pgnum = PGROUNDDOWN(fp);
+
+  printf("backtrace:\n");
+
+  while(fp){
+    if (PGROUNDDOWN(fp) != pgnum){
+      break;
+    }
+    if(walk(kernel_pagetable, fp - 8, 0) == 0)
+      break;
+
+    // return address at fp - 8(bytes)
+    printf("%p\n", *(uint64 *)(fp - 8));
+    // walk up
+    fp = *(uint64 *)(fp - 16);
+  }
+
 }
