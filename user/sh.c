@@ -436,8 +436,8 @@ parseexec(char **ps, char *es)
       panic("syntax");
     cmd->argv[argc] = q;
     cmd->eargv[argc] = eq;
+    printf("argv[%d] = %s\n", argc, cmd->argv[argc]);
     argc++;
-    printf("argv[%d] = %s\n", argc-1, cmd->argv[argc]);
     if(argc >= MAXARGS)
       panic("too many args");
     ret = parseredirs(ret, ps, es);
