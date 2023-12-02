@@ -11,6 +11,8 @@ uint ticks;
 
 extern char trampoline[], uservec[], userret[];
 
+extern int mapcount[];
+
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -46,7 +48,10 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  
+  pte_t *pte;
+  uint64 va, pa;
+  uint flags;
+
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
@@ -67,6 +72,29 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 15){
+    // Store/AMO page fault due to COW mechanism
+    va = PGROUNDDOWN(r_stval());
+    pte = walk(p->pagetable, va, 0);
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((*pte & PTE_COW) == 0){
+      // Store on a originally write-protected page
+      setkilled(p);
+    } else if(mapcount[COUNTID(pa)] > 1) {
+      // install a new physical page
+      // decrease the reference count (in uvmunmap)
+      flags &= ~PTE_COW;
+      flags |= PTE_W;
+      uvmunmap(p->pagetable, va, 1, 0);
+      if(mappages(p->pagetable, va, PGSIZE, (uint64)kalloc(), flags) != 0){
+        setkilled(p);
+      }
+    } else {
+      // page.refcnt == 1
+      *pte &= ~PTE_COW;
+      *pte |= PTE_W;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

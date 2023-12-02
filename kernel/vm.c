@@ -15,6 +15,8 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int mapcount[];    // kalloc.c
+
 // Make a direct-map page table for the kernel.
 pagetable_t
 kvmmake(void)
@@ -177,7 +179,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
-  uint64 a;
+  uint64 a, pa;
   pte_t *pte;
 
   if((va % PGSIZE) != 0)
@@ -190,7 +192,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free){
+    // reduce mapcount
+    pa = PTE2PA(*pte);
+    mapcount[COUNTID(pa)]--;
+    if(do_free && mapcount[COUNTID(pa)] <= 0){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -279,6 +284,7 @@ void
 freewalk(pagetable_t pagetable)
 {
   // there are 2^9 = 512 PTEs in a page table.
+  // printf("freewalking\n");
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
@@ -290,7 +296,10 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
+  // printf("freeing pagetable %p\n", pagetable);
+  mapcount[COUNTID(pagetable)]--;
   kfree((void*)pagetable);
+  // printf("end freewalking\n");
 }
 
 // Free user memory pages,
@@ -309,13 +318,15 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+// TODO: COW
+// 
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -323,6 +334,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    /* 
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
       goto err;
@@ -330,12 +342,28 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
       kfree(mem);
       goto err;
+    } */
+    
+    // TODO: COW 
+    // - increase reference count to the physical page
+    // - set PTE_COW on original RW pages and turn them to read-only
+    // - for those originally write-protected pages, simply do mappage
+    mapcount[COUNTID(pa)]++;    
+    if((*pte & PTE_W) || (*pte & PTE_COW)){
+      *pte |= PTE_COW;
+      *pte &= ~PTE_W;
     }
+    flags = PTE_FLAGS(*pte);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      goto err;
+    }
+
   }
   return 0;
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
+  // uvmunmap(new, 0, i / PGSIZE, 0);
   return -1;
 }
 
@@ -360,17 +388,39 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
   pte_t *pte;
+  uint flags;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     if(va0 >= MAXVA)
       return -1;
     pte = walk(pagetable, va0, 0);
+    // TODO: COW
     if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
+       ((*pte & PTE_W) == 0 && (*pte & PTE_COW) == 0))
       return -1;
+
     pa0 = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
     n = PGSIZE - (dstva - va0);
+
+    if(*pte & PTE_COW){
+      if(mapcount[COUNTID(pa0)] > 1){
+        // install a new physical page
+        // decrease the reference count (in uvmunmap)
+        flags &= ~PTE_COW;
+        flags |= PTE_W;
+        uvmunmap(pagetable, va0, 1, 0);
+        if (mappages(pagetable, va0, PGSIZE, (uint64)kalloc(), flags) != 0){
+          return -1;
+        }
+      } else {
+        // page.refcnt == 1
+        *pte &= ~PTE_COW;
+        *pte |= PTE_W;
+      }
+    }
+
     if(n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);

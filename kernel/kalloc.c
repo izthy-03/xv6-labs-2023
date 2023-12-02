@@ -23,10 +23,19 @@ struct {
   struct run *freelist;
 } kmem;
 
+// map count of each physical page
+int mapcount[(PHYSTOP - KERNBASE) >> PGSHIFT];
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  // printf("initing kernel mem\n");
+  // printf("mapcount locates at %p\n", mapcount);
+  // extern char etext[];
+  // printf("etext at %p\n", (uint64)etext);
+  // printf("end at %p\n", (uint64)end);
+  memset(mapcount, 0, sizeof(mapcount));
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -43,6 +52,10 @@ freerange(void *pa_start, void *pa_end)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+// ***PS***: 
+// For user virtual pages, the only way to access kfree() is uvmunmap() in vm.c
+// But for kernel structs stored by pa(pagetables, etc.), they're freed by directly calling kfree() 
+// instead of uvmunmap(). So just free it without checking mapcount(
 void
 kfree(void *pa)
 {
@@ -51,8 +64,15 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  if(mapcount[COUNTID(pa)] > 0){
+    printf("kfree: pa %p mapcount = 0x%x\n", pa, mapcount[COUNTID(pa)]);
+    // panic("kfree: mapcount nonzero");
+    // return;
+  }
+
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
+  mapcount[COUNTID(pa)] = 0;
 
   r = (struct run*)pa;
 
@@ -76,7 +96,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+  if(r){
+    memset((char*)r, 5, PGSIZE);    // fill with junk
+    mapcount[COUNTID(r)] = 1;  // initialize mapcount
+  }
   return (void*)r;
 }
