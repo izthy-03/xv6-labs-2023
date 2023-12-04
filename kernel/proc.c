@@ -322,6 +322,11 @@ fork(void)
   np->state = RUNNABLE;
   release(&np->lock);
 
+  // printf("forked a new proc %s from %s\n", np->name, p->name);
+  // printf("old walk:\n");
+  // vmprint(p->pagetable);
+  // printf("\nnew walk:\n");
+  // vmprint(np->pagetable);
   return pid;
 }
 

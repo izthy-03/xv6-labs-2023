@@ -64,12 +64,6 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  if(mapcount[COUNTID(pa)] > 0){
-    printf("kfree: pa %p mapcount = 0x%x\n", pa, mapcount[COUNTID(pa)]);
-    // panic("kfree: mapcount nonzero");
-    // return;
-  }
-
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
   mapcount[COUNTID(pa)] = 0;

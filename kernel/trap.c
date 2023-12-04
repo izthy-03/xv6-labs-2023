@@ -49,7 +49,7 @@ usertrap(void)
 
   struct proc *p = myproc();
   pte_t *pte;
-  uint64 va, pa;
+  uint64 va, pa, mem;
   uint flags;
 
   // save user program counter.
@@ -73,29 +73,42 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(r_scause() == 15){
+    // printf("instr 0x%x: Hit store page fault in %p, COWing...\n", r_sepc(), r_stval());
     // Store/AMO page fault due to COW mechanism
     va = PGROUNDDOWN(r_stval());
+    if(va >= MAXVA){
+      goto unexpected;
+    }
     pte = walk(p->pagetable, va, 0);
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((*pte & PTE_COW) == 0){
+    if((*pte & PTE_COW) == 0 || (*pte & PTE_U) == 0){
       // Store on a originally write-protected page
+      // printf("THIS IS NOT A COW PAGE, killed\n");
       setkilled(p);
+      goto unexpected;
     } else if(mapcount[COUNTID(pa)] > 1) {
-      // install a new physical page
+      // install a new physical page AND MAKE IT A COPY
       // decrease the reference count (in uvmunmap)
+      // printf("\tmapcount > 1, kallocing a new page\n");
       flags &= ~PTE_COW;
       flags |= PTE_W;
       uvmunmap(p->pagetable, va, 1, 0);
-      if(mappages(p->pagetable, va, PGSIZE, (uint64)kalloc(), flags) != 0){
+      if((mem = (uint64)kalloc()) == 0){
         setkilled(p);
       }
+      if(mappages(p->pagetable, va, PGSIZE, mem, flags) != 0){
+        setkilled(p);
+      }
+      memmove((char *)mem, (char *)pa, PGSIZE);
     } else {
       // page.refcnt == 1
+      // printf("\tmapcount = 1, directly write\n");
       *pte &= ~PTE_COW;
       *pte |= PTE_W;
     }
   } else {
+unexpected:
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);

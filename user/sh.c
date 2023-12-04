@@ -134,7 +134,8 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  write(2, "$ ", 2);
+  // printf("Reading new cmdline...\n");
+  write(2, "$ ", 2); 
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
@@ -158,6 +159,7 @@ main(void)
 
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
+    // printf("main: buf = %s\n", &buf);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
@@ -308,6 +310,11 @@ gettoken(char **ps, char *es, char **q, char **eq)
   return ret;
 }
 
+/// @brief Skip blanks and find toks in *ps
+/// @param ps reference of string *ps
+/// @param es end of *ps
+/// @param toks token set 
+/// @return whether any toks in *ps
 int
 peek(char **ps, char *es, char *toks)
 {
@@ -330,7 +337,7 @@ parsecmd(char *s)
 {
   char *es;
   struct cmd *cmd;
-
+  // printf("parsecmd: s = %s\n", s);
   es = s + strlen(s);
   cmd = parseline(&s, es);
   peek(&s, es, "");
@@ -346,7 +353,7 @@ struct cmd*
 parseline(char **ps, char *es)
 {
   struct cmd *cmd;
-
+  // printf("parseline: *ps = %s\n", *ps);
   cmd = parsepipe(ps, es);
   while(peek(ps, es, "&")){
     gettoken(ps, es, 0, 0);
@@ -363,7 +370,7 @@ struct cmd*
 parsepipe(char **ps, char *es)
 {
   struct cmd *cmd;
-
+  // printf("parsepipe: *ps = %s\n", *ps);
   cmd = parseexec(ps, es);
   if(peek(ps, es, "|")){
     gettoken(ps, es, 0, 0);
@@ -377,7 +384,7 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
 {
   int tok;
   char *q, *eq;
-
+  // printf("parseredirs: *ps = %s, es = %s\n", *ps, es);
   while(peek(ps, es, "<>")){
     tok = gettoken(ps, es, 0, 0);
     if(gettoken(ps, es, &q, &eq) != 'a')
@@ -428,6 +435,7 @@ parseexec(char **ps, char *es)
   cmd = (struct execcmd*)ret;
 
   argc = 0;
+  // printf("parseexec: *ps = %s, es = %s\n", *ps, es);
   ret = parseredirs(ret, ps, es);
   while(!peek(ps, es, "|)&;")){
     if((tok=gettoken(ps, es, &q, &eq)) == 0)
@@ -436,7 +444,7 @@ parseexec(char **ps, char *es)
       panic("syntax");
     cmd->argv[argc] = q;
     cmd->eargv[argc] = eq;
-    printf("argv[%d] = %s\n", argc, cmd->argv[argc]);
+    // printf("argv[%d] = %s\n", argc, cmd->argv[argc]);
     argc++;
     if(argc >= MAXARGS)
       panic("too many args");

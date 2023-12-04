@@ -195,7 +195,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     // reduce mapcount
     pa = PTE2PA(*pte);
     mapcount[COUNTID(pa)]--;
-    if(do_free && mapcount[COUNTID(pa)] <= 0){
+    if(do_free && mapcount[COUNTID(pa)] == 0){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -357,7 +357,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
-
   }
   return 0;
 
@@ -386,7 +385,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
-  uint64 n, va0, pa0;
+  uint64 n, va0, pa0, mem;
   pte_t *pte;
   uint flags;
 
@@ -405,15 +404,20 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     n = PGSIZE - (dstva - va0);
 
     if(*pte & PTE_COW){
+      // printf("copyout: COWing at vm %p\n", r_stval());
       if(mapcount[COUNTID(pa0)] > 1){
         // install a new physical page
         // decrease the reference count (in uvmunmap)
         flags &= ~PTE_COW;
         flags |= PTE_W;
         uvmunmap(pagetable, va0, 1, 0);
-        if (mappages(pagetable, va0, PGSIZE, (uint64)kalloc(), flags) != 0){
+        if((mem = (uint64)kalloc()) == 0)
+          return -1; 
+        if(mappages(pagetable, va0, PGSIZE, mem, flags) != 0){
           return -1;
         }
+        memmove((char *)mem, (char *)pa0, PGSIZE);
+        pa0 = mem;
       } else {
         // page.refcnt == 1
         *pte &= ~PTE_COW;
@@ -498,4 +502,32 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+void
+pgtbldfs(pagetable_t pagetable, int level)
+{
+  if(level >= 3) 
+    return;
+  
+  for(int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    // If valid
+    if(pte & PTE_V) {
+      for(int k = 0; k < level; k++)
+        printf(".. ");
+      printf("..%d: va %p pa %p\n", i, pte, PTE2PA(pte));
+      uint64 child = PTE2PA(pte);
+      pgtbldfs((pagetable_t)child, level + 1);
+    }
+  }
+}
+
+// Print 3-level page tables for the given pagetable
+void 
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  pgtbldfs(pagetable, 0);
 }
