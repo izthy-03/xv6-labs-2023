@@ -1,0 +1,2 @@
+1. Possible sequence that can lead to a key missing
+- Two threads insert different values into the same key simultaneously.
