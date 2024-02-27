@@ -114,6 +114,7 @@ e1000_transmit(struct mbuf *m)
   uint32 txid = regs[E1000_TDT];
   if (tx_ring[txid].status != E1000_TXD_STAT_DD) {
     // Ring overflow, return error
+    // printf("TX ring overflowed\n");
     release(&e1000_tx_lock);
     return -1;
   }
@@ -153,18 +154,20 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+
   acquire(&e1000_rx_lock);
 
   uint32 rxid = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
-  
+
+
   // Check if the new packet available at rxid
   if (!(rx_ring[rxid].status & E1000_RXD_STAT_DD)) {
+    // printf("RX not available\n");
     release(&e1000_rx_lock);
     return ;
   }
 
   // printf("E1000: receiving at %d\n", rxid);
-
 
   // DMA into mbuf
   rx_mbufs[rxid]->len = rx_ring[rxid].length;
@@ -186,7 +189,7 @@ e1000_recv(void)
   regs[E1000_RDT] = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
 
   release(&e1000_rx_lock);
-  
+
   return ;
 }
 
@@ -197,6 +200,8 @@ e1000_intr(void)
   // without this the e1000 won't raise any
   // further interrupts.
   regs[E1000_ICR] = 0xffffffff;
+  // printf("E1000 rx ring head: %d\n", regs[E1000_RDH]);
 
-  e1000_recv();
+  while((regs[E1000_RDT] + 1) % RX_RING_SIZE != regs[E1000_RDH])
+    e1000_recv();
 }
